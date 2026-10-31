@@ -1,0 +1,20 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>880aaed5-cad9-458f-9fef-ff1a6dfe0664</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Stripe's official .NET SDK: verifies webhook signatures and gives us typed
+         objects (Session, etc.) instead of us hand-parsing Stripe's JSON. -->
+    <PackageReference Include="Stripe.net" Version="53.0.0" />
+    <!-- QuestPDF: the PDF-generation library used to build the branded receipt.
+         Free "Community" license applies to small businesses/individuals like this one
+         (see https://www.questpdf.com/license/) - set in Program.cs at startup. -->
+    <PackageReference Include="QuestPDF" Version="2024.10.3" />
+  </ItemGroup>
+
+</Project>
