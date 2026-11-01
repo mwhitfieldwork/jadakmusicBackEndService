@@ -114,47 +114,58 @@ app.MapPost("/create-checkout-session", async (
 
     var sessionService = new SessionService(stripeClient);
 
-    var session = await sessionService.CreateAsync(new SessionCreateOptions
+
+    try
     {
-        Mode = "payment",
-        CustomerEmail = request.CustomerEmail,
-        LineItems =
-        [
-            new SessionLineItemOptions
-            {
-                Quantity = 1,
-                PriceData = new SessionLineItemPriceDataOptions
+        var session = await sessionService.CreateAsync(new SessionCreateOptions
+        {
+            Mode = "payment",
+            CustomerEmail = request.CustomerEmail,
+            LineItems =
+            [
+                new SessionLineItemOptions
                 {
-                    Currency = "usd",
-                    UnitAmount = (long)(request.DepositAmount * 100), // Stripe wants cents, not dollars
-                    ProductData = new SessionLineItemPriceDataProductDataOptions
+                    Quantity = 1,
+                    PriceData = new SessionLineItemPriceDataOptions
                     {
-                        Name = "Booking Deposit",
+                        Currency = "usd",
+                        UnitAmount = (long)(request.DepositAmount * 100),
+                        ProductData = new SessionLineItemPriceDataProductDataOptions
+                        {
+                            Name = "Booking Deposit",
+                        },
                     },
                 },
+            ],
+            Metadata = new Dictionary<string, string>
+            {
+                ["customer_name"] = request.CustomerName,
+                ["event_date"] = request.EventDate,
+                ["performance_location"] = request.PerformanceLocation,
+                ["instructions"] = request.Instructions ?? string.Empty,
+                ["setup_requirements"] = request.SetupRequirements ?? string.Empty,
             },
-        ],
-        // This is the actual fix for the "known gap" - these ride along on
-        // the session and come back out in the webhook event below, so the
-        // PDF receipt can include them. Metadata values must be strings and
-        // Stripe caps each at 500 characters, which is generous for this.
-        Metadata = new Dictionary<string, string>
-        {
-            ["customer_name"] = request.CustomerName,
-            ["event_date"] = request.EventDate,
-            ["performance_location"] = request.PerformanceLocation,
-            ["instructions"] = request.Instructions ?? string.Empty,
-            ["setup_requirements"] = request.SetupRequirements ?? string.Empty,
-        },
-        SuccessUrl = stripeOptions.Value.SuccessUrl,
-        CancelUrl = stripeOptions.Value.CancelUrl,
-    });
+            SuccessUrl = stripeOptions.Value.SuccessUrl,
+            CancelUrl = stripeOptions.Value.CancelUrl,
+        });
 
-    logger.LogInformation("Created Checkout Session {SessionId} for {Email}.", session.Id, request.CustomerEmail);
+        logger.LogInformation("Created Checkout Session {SessionId} for {Email}.", session.Id, request.CustomerEmail);
 
-    return Results.Ok(new { url = session.Url });
+        return Results.Ok(new { url = session.Url });
+    }
+    catch (StripeException ex)
+    {
+        // Covers an invalid/placeholder API key (expected until the client's
+        // real Stripe key is set in Railway) or any other Stripe-side rejection.
+        // Without this catch, the exception crashes the request before the CORS
+        // middleware can attach its headers - the browser then reports a
+        // confusing "CORS policy" error instead of the real problem.
+        logger.LogError(ex, "Stripe rejected the Checkout Session request.");
+        return Results.Problem(
+            detail: "Unable to start checkout with Stripe right now.",
+            statusCode: StatusCodes.Status502BadGateway);
+    }
 });
-
 // In-memory set of Stripe event IDs we've already processed. Stripe retries a
 // webhook delivery if it doesn't get a prompt 200 response, which could
 // otherwise email the same customer the same receipt twice. A real database
